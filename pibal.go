@@ -1,24 +1,27 @@
 package main
 
 import (
+	"log"
+
 	"github.com/hybridgroup/gobot"
 )
 
 func main() {
 	gbot := gobot.NewGobot()
 
-	serialAdaptor := NewSerialAdaptor("propeller", "/dev/ttyAMA0")
-	motor := NewMotorDriver(serialAdaptor, "motor")
+	propeller := NewSerialAdaptor("propeller", "/dev/ttyAMA0")
+	motor := NewMotorDriver(propeller, "motor")
+	gbot.On(propeller.Event(Data), func(data interface{}) {
+		log.Printf("%q", data)
+	})
 
 	work := func() {
-		serialAdaptor.SerialWrite("+gs")
-		serialAdaptor.SerialWrite("+gp")
-		serialAdaptor.SerialWrite("")
-		serialAdaptor.SerialWrite("")
+		propeller.SerialWrite("+gs")
+		propeller.SerialWrite("+gp")
 	}
 
 	robot := gobot.NewRobot("PiBal",
-		[]gobot.Connection{serialAdaptor},
+		[]gobot.Connection{propeller},
 		[]gobot.Device{motor},
 		work,
 	)

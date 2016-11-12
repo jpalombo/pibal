@@ -92,6 +92,7 @@ func (f *SerialAdaptor) SerialWrite(cmd string) (err error) {
 	log.Println("Sending : " + cmd)
 	_, err = f.port.Write([]byte(cmd + "\n"))
 	if err != nil {
+		f.Publish(f.Event(Error), err)
 		log.Fatal(err)
 	}
 	return
