@@ -48,15 +48,20 @@ func (f *SerialAdaptor) Connect() (errs []error) {
 	}
 
 	go func() {
-		buf := make([]byte, 128)
+		inchar := make([]byte, 1)
+		line := make([]byte, 0, 128)
 		for {
-			n, err := f.port.Read(buf)
-			if err != nil {
+			n, err := f.port.Read(inchar)
+			if err != nil || n != 1 {
 				f.Publish(f.Event(Error), err)
 				log.Fatal(err)
+			} else if inchar[0] == '\n' || inchar[0] == '\r' {
+				log.Printf("%d %q", n, line)
+				f.Publish(f.Event(Data), line)
+				line = line[0:0]
+			} else {
+				line = append(line, inchar[0])
 			}
-			log.Printf("%d %q", n, buf[:n])
-			f.Publish(f.Event(Data), buf[:n])
 		}
 	}()
 
