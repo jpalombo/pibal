@@ -6,6 +6,13 @@ import (
 	"github.com/hybridgroup/gobot"
 )
 
+const (
+	// Error event
+	Error = "error"
+	// Data event
+	Data = "data"
+)
+
 var (
 	// ErrSerialWriteUnsupported is the error resulting when a driver attempts to use
 	// hardware capabilities which a connection does not support

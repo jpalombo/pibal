@@ -24,25 +24,19 @@ type SerialAdaptor struct {
 // to a serial port with a baude rate of 57600. If an io.ReadWriteCloser
 // is supplied, then the SerialAdaptor will use the provided io.ReadWriteCloser and use the
 // string port as a label to be displayed in the log and api.
-func NewSerialAdaptor(name string, args ...interface{}) *SerialAdaptor {
+func NewSerialAdaptor(name string, portname string) *SerialAdaptor {
 	f := &SerialAdaptor{
 		adaptorName: name,
-		portName:    "",
+		portName:    portname,
 		port:        nil,
 		Eventer:     gobot.NewEventer(),
 	}
-
-	for _, arg := range args {
-		switch arg.(type) {
-		case string:
-			f.portName = arg.(string)
-		}
-	}
-
+	f.AddEvent(Data)
+	f.AddEvent(Error)
 	return f
 }
 
-// Connect starts a connection to the board.
+// Connect starts a connection to the board and start a data reader loop.
 func (f *SerialAdaptor) Connect() (errs []error) {
 	if f.port == nil {
 		c := &serial.Config{Name: f.portName, Baud: 115200}
@@ -52,6 +46,20 @@ func (f *SerialAdaptor) Connect() (errs []error) {
 		}
 		f.port = sp
 	}
+
+	go func() {
+		buf := make([]byte, 128)
+		for {
+			n, err := f.port.Read(buf)
+			if err != nil {
+				f.Publish(f.Event(Error), err)
+				log.Fatal(err)
+			}
+			log.Printf("%d %q", n, buf[:n])
+			f.Publish(f.Event(Data), buf[:n])
+		}
+	}()
+
 	return
 }
 
@@ -77,18 +85,9 @@ func (f *SerialAdaptor) Name() string { return f.adaptorName }
 // WriteCmd writes a command to the serial port.
 func (f *SerialAdaptor) SerialWrite(cmd string) (err error) {
 	log.Println("Sending : " + cmd)
-
-	n, err := f.port.Write([]byte(cmd + "\n"))
+	_, err = f.port.Write([]byte(cmd + "\n"))
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	buf := make([]byte, 128)
-	n, err = f.port.Read(buf)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("%d %q", n, buf[:n])
-
 	return
 }
