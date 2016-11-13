@@ -56,7 +56,7 @@ func (f *SerialAdaptor) Connect() (errs []error) {
 				f.Publish(f.Event(Error), err)
 				log.Fatal(err)
 			} else if inchar[0] == '\n' || inchar[0] == '\r' {
-				log.Printf("%d %q", n, line)
+				//log.Printf("%d %q", n, line)
 				f.Publish(f.Event(Data), line)
 				line = line[0:0]
 			} else {

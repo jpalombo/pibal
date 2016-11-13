@@ -13,17 +13,20 @@ func main() {
 
 	propeller := NewSerialAdaptor("propeller", "/dev/ttyAMA0")
 	motor := NewMotorDriver(propeller, "motor")
-	gbot.On(propeller.Event(Data), func(data interface{}) {
-		inbytes := data.([]byte)
-		if inbytes[0] == '>' {
-		}
-		if bytes.Equal(inbytes[0:3], []byte{'+', 'g', 's'}) {
-			propeller.SerialWrite("+gs")
-		}
-		log.Printf("%q", data)
-	})
 
 	work := func() {
+		propeller.On(propeller.Event(Data), func(data interface{}) {
+			log.Printf("%q", data)
+			inbytes := data.([]byte)
+			if inbytes[0] == '>' {
+				inbytes = inbytes[1:]
+			}
+			if bytes.Equal(inbytes[0:3], []byte{'+', 'g', 's'}) {
+				propeller.SerialWrite("+gs")
+			}
+			log.Printf("%q", inbytes)
+		})
+
 		propeller.SerialWrite("+ss 0 1000")
 		propeller.SerialWrite("+ss 1 1000")
 		propeller.SerialWrite("+ss 2 1000")
