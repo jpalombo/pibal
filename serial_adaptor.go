@@ -70,6 +70,7 @@ func (f *SerialAdaptor) Connect() (errs []error) {
 
 // Disconnect closes the io connection to the board
 func (f *SerialAdaptor) Disconnect() (err error) {
+	f.port.Close()
 	return nil
 }
 

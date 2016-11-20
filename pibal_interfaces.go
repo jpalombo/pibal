@@ -6,17 +6,17 @@ import (
 	"github.com/hybridgroup/gobot"
 )
 
+var (
+	// ErrSerialWriteUnsupported is the error resulting when a driver attempts to use
+	// hardware capabilities which a connection does not support
+	ErrSerialWriteUnsupported = errors.New("SerialWrite is not supported by this platform")
+)
+
 const (
 	// Error event
 	Error = "error"
 	// Data event
 	Data = "data"
-)
-
-var (
-	// ErrSerialWriteUnsupported is the error resulting when a driver attempts to use
-	// hardware capabilities which a connection does not support
-	ErrSerialWriteUnsupported = errors.New("SerialWrite is not supported by this platform")
 )
 
 // DigitalWriter interface represents an Adaptor which has DigitalWrite capabilities

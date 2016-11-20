@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"log"
 	"time"
 
 	"github.com/hybridgroup/gobot"
@@ -11,33 +9,22 @@ import (
 func main() {
 	gbot := gobot.NewGobot()
 
-	propeller := NewSerialAdaptor("propeller", "/dev/ttyAMA0")
-	motor := NewMotorDriver(propeller, "motor")
+	propserial := NewSerialAdaptor("propeller", "/dev/ttyAMA0")
+	motor := NewMotorDriver(propserial, "motor")
 
 	work := func() {
-		propeller.On(propeller.Event(Data), func(data interface{}) {
-			log.Printf("%q", data)
-			inbytes := data.([]byte)
-			if inbytes[0] == '>' {
-				inbytes = inbytes[1:]
-			}
-			if bytes.Equal(inbytes[0:3], []byte{'+', 'g', 's'}) {
-				propeller.SerialWrite("+gs")
-			}
-			log.Printf("%q", inbytes)
-		})
+		gobot.Every(time.Millisecond*10, func() { motor.GetSpeed() })
 
-		propeller.SerialWrite("+ss 0 1000")
-		propeller.SerialWrite("+ss 1 1000")
-		propeller.SerialWrite("+ss 2 1000")
-		propeller.SerialWrite("+ss 3 1000")
-		propeller.SerialWrite("+gs")
-		time.Sleep(2 * time.Second)
-		propeller.SerialWrite("+s")
+		motor.Speed(200)
+		time.Sleep(1 * time.Second)
+		motor.Speed(-200)
+		time.Sleep(1 * time.Second)
+		motor.Stop()
+		gbot.Stop()
 	}
 
 	robot := gobot.NewRobot("PiBal",
-		[]gobot.Connection{propeller},
+		[]gobot.Connection{propserial},
 		[]gobot.Device{motor},
 		work,
 	)

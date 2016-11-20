@@ -1,26 +1,37 @@
 package main
 
 import (
+	"fmt"
+	"log"
+	"strings"
+
 	"github.com/hybridgroup/gobot"
 )
 
 // MotorDriver Represents a Motor
 type MotorDriver struct {
-	name             string
-	connection       SerialWriter
-	CurrentState     byte
-	CurrentSpeed     byte
-	CurrentDirection string
+	name         string
+	connection   SerialWriter
+	CurrentSpeed [4]int16
 }
 
 // NewMotorDriver return a new MotorDriver given a SerialWriter, name and pin
 func NewMotorDriver(a SerialWriter, name string) *MotorDriver {
+
+	if eventer, ok := a.(gobot.Eventer); ok {
+		eventer.On(eventer.Event(Data), func(data interface{}) {
+			if inbytes, ok := data.([]byte); ok {
+				if inbytes[0] == '>' {
+					inbytes = inbytes[1:]
+				}
+				parseReadData(string(inbytes))
+			}
+		})
+	}
+
 	return &MotorDriver{
-		name:             name,
-		connection:       a,
-		CurrentState:     0,
-		CurrentSpeed:     0,
-		CurrentDirection: "forward",
+		name:       name,
+		connection: a,
 	}
 }
 
@@ -36,131 +47,83 @@ func (m *MotorDriver) Start() (errs []error) { return }
 // Halt implements the Driver interface
 func (m *MotorDriver) Halt() (errs []error) { return }
 
-// Off turns the motor off or sets the motor to a 0 speed
-func (m *MotorDriver) Off() (err error) {
-	err = m.Speed(0)
-	return
-}
-
-// On turns the motor on or sets the motor to a maximum speed
-func (m *MotorDriver) On() (err error) {
-	if m.CurrentSpeed == 0 {
-		m.CurrentSpeed = 255
+// Speed sets the motor speeds
+func (m *MotorDriver) Speed(value ...int16) (err error) {
+	if value == nil { // called with zero parameters
+		for i, _ := range m.CurrentSpeed {
+			m.CurrentSpeed[i] = 0
+		}
 	}
-	err = m.Speed(m.CurrentSpeed)
-	return
-}
-
-// Min sets the motor to the minimum speed
-func (m *MotorDriver) Min() (err error) {
-	return m.Off()
-}
-
-// Max sets the motor to the maximum speed
-func (m *MotorDriver) Max() (err error) {
-	return m.Speed(255)
-}
-
-// IsOn returns true if the motor is on
-func (m *MotorDriver) IsOn() bool {
-	return m.CurrentSpeed > 0
-}
-
-// IsOff returns true if the motor is off
-func (m *MotorDriver) IsOff() bool {
-	return !m.IsOn()
-}
-
-// Toggle sets the motor to the opposite of it's current state
-func (m *MotorDriver) Toggle() (err error) {
-	if m.IsOn() {
-		err = m.Off()
-	} else {
-		err = m.On()
+	switch len(value) {
+	case 1:
+		for i, _ := range m.CurrentSpeed {
+			m.CurrentSpeed[i] = value[0]
+		}
+	case 2:
+		m.CurrentSpeed[0] = value[0]
+		m.CurrentSpeed[1] = value[0]
+		m.CurrentSpeed[2] = value[1]
+		m.CurrentSpeed[3] = value[1]
+	case 4:
+		for i, _ := range m.CurrentSpeed {
+			m.CurrentSpeed[i] = value[i]
+		}
 	}
-	return
-}
 
-// Speed sets the speed of the motor
-func (m *MotorDriver) Speed(value byte) (err error) {
+	outstring := fmt.Sprintf("+sa %d %d %d %d",
+		m.CurrentSpeed[0],
+		m.CurrentSpeed[1],
+		m.CurrentSpeed[2],
+		m.CurrentSpeed[3])
 	if writer, ok := m.connection.(SerialWriter); ok {
-		m.CurrentSpeed = value
-		return writer.SerialWrite("")
+		return writer.SerialWrite(outstring)
+	}
+
+	return ErrSerialWriteUnsupported
+}
+
+// GetSpeed gets the motor speeds
+func (m *MotorDriver) GetSpeed() (err error) {
+	if writer, ok := m.connection.(SerialWriter); ok {
+		return writer.SerialWrite("+gs")
 	}
 	return ErrSerialWriteUnsupported
 }
 
-// Forward sets the forward pin to the specified speed
-func (m *MotorDriver) Forward(speed byte) (err error) {
-	err = m.Direction("forward")
-	if err != nil {
-		return
+// GetSpeed gets the motor speeds
+func (m *MotorDriver) GetPosition() (err error) {
+	if writer, ok := m.connection.(SerialWriter); ok {
+		return writer.SerialWrite("+gp")
 	}
-	err = m.Speed(speed)
-	if err != nil {
-		return
-	}
-	return
+	return ErrSerialWriteUnsupported
 }
 
-// Backward sets the backward pin to the specified speed
-func (m *MotorDriver) Backward(speed byte) (err error) {
-	err = m.Direction("backward")
-	if err != nil {
-		return
+// Stop stops the motor
+func (m *MotorDriver) Stop() (err error) {
+	if writer, ok := m.connection.(SerialWriter); ok {
+		return writer.SerialWrite("+st")
 	}
-	err = m.Speed(speed)
-	if err != nil {
-		return
-	}
-	return
+	return ErrSerialWriteUnsupported
 }
 
-// Direction sets the direction pin to the specified speed
-func (m *MotorDriver) Direction(direction string) (err error) {
-	/*
-	m.CurrentDirection = direction
-	if m.DirectionPin != "" {
-		var level byte
-		if direction == "forward" {
-			level = 1
-		} else {
-			level = 0
-		}
-		err = m.connection.SerialWrite(m.DirectionPin)
-	} else {
-		var forwardLevel, backwardLevel byte
-		switch direction {
-		case "forward":
-			forwardLevel = 1
-			backwardLevel = 0
-		case "backward":
-			forwardLevel = 0
-			backwardLevel = 1
-		case "none":
-			forwardLevel = 0
-			backwardLevel = 0
-		}
-		err = m.connection.SerialWrite(m.ForwardPin)
-		if err != nil {
-			return
-		}
-		err = m.connection.SerialWrite(m.BackwardPin)
-		if err != nil {
-			return
-		}
-	}*/
-	return
-}
-
-func (m *MotorDriver) changeState(state byte) (err error) {
-	m.CurrentState = state
-	if state == 1 {
-		m.CurrentSpeed = 0
-	} else {
-		m.CurrentSpeed = 255
+func parseReadData(data string) {
+	split := strings.Split(data, " ")
+	switch split[0] {
+	case "+gs:":
+		log.Printf("speed: %s %s %s %s %s",
+			split[1],
+			split[2],
+			split[3],
+			split[4],
+			split[5])
+	case "+gp:":
+		log.Printf("position: %s %s %s %s %s",
+			split[1],
+			split[2],
+			split[3],
+			split[4],
+			split[5])
+	default:
+		log.Printf("%s", data)
 	}
-	err = m.connection.SerialWrite("")
-
-	return
 }
