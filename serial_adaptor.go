@@ -19,11 +19,6 @@ type SerialAdaptor struct {
 //
 //	string: port the SerialAdaptor uses to connect to a serial port with a baud rate of 115200
 //	io.ReadWriteCloser: connection the SerialAdaptor uses to communication with the hardware
-//
-// If an io.ReadWriteCloser is not supplied, the SerialAdaptor will open a connection
-// to a serial port with a baude rate of 57600. If an io.ReadWriteCloser
-// is supplied, then the SerialAdaptor will use the provided io.ReadWriteCloser and use the
-// string port as a label to be displayed in the log and api.
 func NewSerialAdaptor(name string, portname string) *SerialAdaptor {
 	f := &SerialAdaptor{
 		adaptorName: name,
@@ -88,7 +83,7 @@ func (f *SerialAdaptor) Port() string { return f.portName }
 // Name returns the  SerialAdaptors name
 func (f *SerialAdaptor) Name() string { return f.adaptorName }
 
-// WriteCmd writes a command to the serial port.
+// SerialWrite writes a command to the serial port.
 func (f *SerialAdaptor) SerialWrite(cmd string) (err error) {
 	log.Println("Sending : " + cmd)
 	_, err = f.port.Write([]byte(cmd + "\n"))

@@ -18,21 +18,23 @@ type MotorDriver struct {
 // NewMotorDriver return a new MotorDriver given a SerialWriter, name and pin
 func NewMotorDriver(a SerialWriter, name string) *MotorDriver {
 
+	m := &MotorDriver{
+		name:       name,
+		connection: a,
+	}
+
 	if eventer, ok := a.(gobot.Eventer); ok {
 		eventer.On(eventer.Event(Data), func(data interface{}) {
 			if inbytes, ok := data.([]byte); ok {
 				if inbytes[0] == '>' {
 					inbytes = inbytes[1:]
 				}
-				parseReadData(string(inbytes))
+				m.parseReadData(string(inbytes))
 			}
 		})
 	}
 
-	return &MotorDriver{
-		name:       name,
-		connection: a,
-	}
+	return m
 }
 
 // Name returns the MotorDrivers name
@@ -50,13 +52,13 @@ func (m *MotorDriver) Halt() (errs []error) { return }
 // Speed sets the motor speeds
 func (m *MotorDriver) Speed(value ...int16) (err error) {
 	if value == nil { // called with zero parameters
-		for i, _ := range m.CurrentSpeed {
+		for i := range m.CurrentSpeed {
 			m.CurrentSpeed[i] = 0
 		}
 	}
 	switch len(value) {
 	case 1:
-		for i, _ := range m.CurrentSpeed {
+		for i := range m.CurrentSpeed {
 			m.CurrentSpeed[i] = value[0]
 		}
 	case 2:
@@ -65,7 +67,7 @@ func (m *MotorDriver) Speed(value ...int16) (err error) {
 		m.CurrentSpeed[2] = value[1]
 		m.CurrentSpeed[3] = value[1]
 	case 4:
-		for i, _ := range m.CurrentSpeed {
+		for i := range m.CurrentSpeed {
 			m.CurrentSpeed[i] = value[i]
 		}
 	}
@@ -90,7 +92,7 @@ func (m *MotorDriver) GetSpeed() (err error) {
 	return ErrSerialWriteUnsupported
 }
 
-// GetSpeed gets the motor speeds
+// GetPosition gets the motor speeds
 func (m *MotorDriver) GetPosition() (err error) {
 	if writer, ok := m.connection.(SerialWriter); ok {
 		return writer.SerialWrite("+gp")
@@ -106,7 +108,7 @@ func (m *MotorDriver) Stop() (err error) {
 	return ErrSerialWriteUnsupported
 }
 
-func parseReadData(data string) {
+func (m *MotorDriver) parseReadData(data string) {
 	split := strings.Split(data, " ")
 	switch split[0] {
 	case "+gs:":

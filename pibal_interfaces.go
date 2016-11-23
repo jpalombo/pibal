@@ -17,10 +17,29 @@ const (
 	Error = "error"
 	// Data event
 	Data = "data"
+	// Joystick event
+	Joystick = "joystick"
+	// MotorSpeed event
+	MotorSpeed = "motorspeed"
 )
 
-// DigitalWriter interface represents an Adaptor which has DigitalWrite capabilities
+// JoystickData struct for data sent with the Joystick event
+type JoystickData struct {
+	posX          float64
+	posY          float64
+	deadManHandle bool
+}
+
+// Interfaces
+
+// SerialWriter interface represents an Adaptor which has SerialWrite capabilities
 type SerialWriter interface {
 	gobot.Adaptor
 	SerialWrite(string) (err error)
+}
+
+// UDPWriter interface represents an Adaptor which has UDPWrite capabilities
+type UDPWriter interface {
+	gobot.Adaptor
+	UDPWrite([]byte) (err error)
 }
