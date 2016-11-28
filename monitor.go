@@ -2,15 +2,10 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
-	"net"
 	"time"
-)
 
-const (
-	buflen = 512      //Max length of buffer
-	port   = ":25045" // = "JBP" in base 36!
+	"github.com/hybridgroup/gobot"
 )
 
 // Watchvar holds data about a watched variable
@@ -28,145 +23,136 @@ type Controlvar struct {
 	minval int
 }
 
-var monitor struct {
-	watchvars   []Watchvar
+// MonitorDriver holds data about the monitor driver
+type MonitorDriver struct {
+	name        string
+	connection  UDPWriter
+	watchvars   []*Watchvar
 	controlvars map[string]Controlvar
-	remoteAddr  *net.UDPAddr
-	localAddr   *net.UDPAddr
 	running     bool
 }
 
-// MonitorInit initialises the monitor function
-func MonitorInit() {
-	var err error
-	monitor.controlvars = make(map[string]Controlvar)
-	monitor.localAddr, err = net.ResolveUDPAddr("udp", port)
-	if err != nil {
-		log.Fatal(err)
+// NewMonitorDriver initialises the MonitorDriver struct
+func NewMonitorDriver(u UDPWriter, name string) *MonitorDriver {
+	m := &MonitorDriver{
+		name:        name,
+		connection:  u,
+		controlvars: make(map[string]Controlvar),
+		running:     true,
 	}
-	monitor.running = true
 
-	go listener()
-	go watcher()
+	if eventer, ok := u.(gobot.Eventer); ok {
+		eventer.On(eventer.Event(Data), func(data interface{}) {
+			if inbytes, ok := data.([]byte); ok {
+				m.parseMonitorData(inbytes)
+			}
+		})
+	}
+
+	go m.watcher()
+
+	return m
 }
 
+// Name returns the MonitorDrivers name
+func (m *MonitorDriver) Name() string { return m.name }
+
+// Connection returns the MonitorDrivers Connection
+func (m *MonitorDriver) Connection() gobot.Connection { return m.connection.(gobot.Connection) }
+
+// Start implements the Driver interface
+func (m *MonitorDriver) Start() (errs []error) { return }
+
+// Halt implements the Driver interface
+func (m *MonitorDriver) Halt() (errs []error) { return }
+
 // Watch starts watching a variable
-func Watch(watchvar *int, name string) {
-	monitor.watchvars = append(monitor.watchvars, Watchvar{ref: watchvar, oldval: *watchvar, name: name})
+func (m *MonitorDriver) Watch(watchvar *int, name string) {
+	m.watchvars = append(m.watchvars, &Watchvar{ref: watchvar, oldval: *watchvar, name: name})
 }
 
 // Control registers a control variable for remote control
-func Control(controlvar *int, name string, maxval int, minval int) {
-	monitor.controlvars[name] = Controlvar{ref: controlvar, oldval: *controlvar, maxval: maxval, minval: minval}
+func (m *MonitorDriver) Control(controlvar *int, name string, maxval int, minval int) {
+	m.controlvars[name] = Controlvar{ref: controlvar, oldval: *controlvar, maxval: maxval, minval: minval}
 }
 
 // JSONControl struct used for communication
 type JSONControl struct {
-	min int
-	max int
-	val int
+	Min int `json:"min"`
+	Max int `json:"max"`
+	Val int `json:"val"`
 }
 
-func listener() {
-	buf := make([]byte, buflen)
-
-	/* Listen at selected port */
-	ServerConn, err := net.ListenUDP("udp", monitor.localAddr)
-	if err != nil {
-		log.Fatal(err)
+func (m *MonitorDriver) parseMonitorData(buf []byte) {
+	var jdat map[string]interface{}
+	if err := json.Unmarshal(buf, &jdat); err != nil {
+		panic(err)
 	}
-	defer ServerConn.Close()
 
-	for monitor.running {
-		n, addr, err := ServerConn.ReadFromUDP(buf)
-		if err != nil {
-			log.Println("Error: ", err)
-		} else {
-			monitor.remoteAddr = addr
-		}
-		log.Println("Received ", string(buf[0:n]), " from ", addr)
-
-		var jdat map[string]interface{}
-		if err = json.Unmarshal(buf[0:n], &jdat); err != nil {
-			panic(err)
-		}
-		fmt.Println(jdat)
-
-		/*
-			// Look for any "set"s of control variables
-			if (j.count("set") > 0) {
-					for (json::iterator it = j["set"].begin(); it != j["set"].end(); ++it) {
-							if (controlvars.count(it.key()) > 0) {
-									*(controlvars[it.key()].ref) = it.value();
-							}
-					}
+	if setmap, ok := jdat["set"]; ok {
+		for k, v := range setmap.(map[string]interface{}) {
+			if c, ok := m.controlvars[k]; ok {
+				*c.ref = int(v.(float64))
 			}
-		*/
-		// Send back the current set of control variables
-		jout := make(map[string]JSONControl)
-		for name, c := range monitor.controlvars {
-			jout[name] = JSONControl{min: c.minval, max: c.maxval, val: 0}
 		}
-		jdat["control"] = jout
+	}
 
-		// Convert the data into JSON
-		joutbytes, err := json.Marshal(jdat)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(string(joutbytes))
+	// Send back the current set of control variables
+	jout := make(map[string]JSONControl)
+	for name, c := range m.controlvars {
+		jout[name] = JSONControl{Min: c.minval, Max: c.maxval, Val: *c.ref}
+	}
+	jdat["control"] = jout
 
-		//Reply to the client
-		if _, err := ServerConn.WriteToUDP(joutbytes, monitor.remoteAddr); err != nil {
-			log.Println("Error: ", err)
-		}
+	// Convert the data into JSON
+	joutbytes, err := json.Marshal(jdat)
+	if err != nil {
+		panic(err)
+	}
+
+	//Reply to the client
+	if err := m.connection.UDPWrite(joutbytes); err != nil {
+		log.Println("Error: ", err)
 	}
 }
 
 const updateinterval = 200
 
-func watcher() {
+// JSONWatch struct used for communicatng watch variables
+type JSONWatch struct {
+	Millis    int            `json:"millis"`
+	Variables map[string]int `json:"variables"`
+}
 
-	//loopcount := 0
+func (m *MonitorDriver) watcher() {
 
-	for monitor.running {
+	loopcount := 0
+	dataToSend := false
+	j := JSONWatch{}
+	t0 := time.Now()
+
+	for m.running {
 		time.Sleep(2 * time.Millisecond)
+		loopcount++
+		j.Millis = int(time.Since(t0) / time.Millisecond)
+		j.Variables = make(map[string]int)
+		dataToSend = false
 
+		for _, wv := range m.watchvars {
+			if (loopcount%updateinterval) == 0 || wv.oldval != *wv.ref {
+				// Add the watched variable to the report
+				j.Variables[wv.name] = *wv.ref
+				wv.oldval = *wv.ref
+				dataToSend = true
+			}
+		}
+
+		if dataToSend {
+			if jdata, err := json.Marshal(j); err == nil {
+				m.connection.UDPWrite(jdata)
+			} else {
+				log.Println("Error: ", err)
+			}
+		}
 	}
-
-	/*
-	   	json j;
-	      bool dataToSend;
-	      unsigned int loopcount = 0;
-	      int watchSocket_fd = *((int*) param);
-
-	      while (running)
-	      {
-	          usleep(2000);  // loop once per 2ms
-	          loopcount++;
-	          j.clear();
-	          dataToSend = false;
-	          j["millis"] = millis();
-	          int len = watchvars.size();
-	          for (int i = 0; i < len; i++) {
-	              if ((loopcount % UPDATEINTERVAL) == 0 || watchvars[i].oldval != *watchvars[i].ref) {
-	                  // Add the watched variable to the report
-	                  j["variables"][watchvars[i].name] = *watchvars[i].ref;
-	                  watchvars[i].oldval = *watchvars[i].ref;
-	                  dataToSend = true;
-	              }
-	          }
-	          if (dataToSend) {
-	              std::string dataout(j.dump());
-	              if (socket_other.sin_addr.s_addr != 0) {
-	                  if (sendto(watchSocket_fd, dataout.c_str(), dataout.length(), 0, (struct sockaddr *) &socket_other, slen) == -1) {
-	                      die("sendto()");
-	                  }
-	              }
-	          }
-	      }
-	      close(watchSocket_fd);
-	      return 0;
-	*/
-
 }

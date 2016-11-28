@@ -9,16 +9,18 @@ import (
 func main() {
 	gbot := gobot.NewGobot()
 
-	var t int
+	t := 10
 	inc := 1
-	MonitorInit()
-	Watch(&t, "Count")
-	Control(&inc, "Increment", 5, -5)
 
 	propserial := NewSerialAdaptor("propeller", "/dev/ttyAMA0")
 	motor := NewMotorDriver(propserial, "motor")
+	monitorudp := NewUDPAdaptor("monitor UDP", ":25045")
+	monitor := NewMonitorDriver(monitorudp, "monitor")
 	joystickudp := NewUDPAdaptor("joystick UDP", ":10000")
 	remotejoystick := NewPCJoystickDriver(joystickudp, "PC joystick")
+
+	monitor.Watch(&t, "Count")
+	monitor.Control(&inc, "Increment", 5, -5)
 
 	work := func() {
 		//gobot.Every(time.Millisecond*10, func() { motor.GetSpeed() })
@@ -35,8 +37,8 @@ func main() {
 	}
 
 	robot := gobot.NewRobot("PiBal",
-		[]gobot.Connection{propserial, joystickudp},
-		[]gobot.Device{motor, remotejoystick},
+		[]gobot.Connection{propserial, joystickudp, monitorudp},
+		[]gobot.Device{motor, remotejoystick, monitor},
 		work,
 	)
 	gbot.AddRobot(robot)

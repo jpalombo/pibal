@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net"
 
 	"github.com/hybridgroup/gobot"
@@ -35,11 +36,16 @@ func NewUDPAdaptor(name string, portname string) *UDPAdaptor {
 
 // Connect opens a UDP port and starts a data reader loop.
 func (u *UDPAdaptor) Connect() (errs []error) {
+	var err error
 	if u.localAddr == nil {
-		u.localAddr, _ = net.ResolveUDPAddr("udp", u.portName)
+		if u.localAddr, err = net.ResolveUDPAddr("udp", u.portName); err != nil {
+			log.Println("ResolveUDPError ", err)
+		}
 	}
 	if u.conn == nil {
-		u.conn, _ = net.ListenUDP("udp", u.localAddr)
+		if u.conn, err = net.ListenUDP("udp", u.localAddr); err != nil {
+			log.Println("ListenUDP ", err)
+		}
 	}
 
 	go func() {
