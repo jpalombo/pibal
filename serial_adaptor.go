@@ -85,7 +85,7 @@ func (f *SerialAdaptor) Name() string { return f.adaptorName }
 
 // SerialWrite writes a command to the serial port.
 func (f *SerialAdaptor) SerialWrite(cmd string) (err error) {
-	log.Println("Sending : " + cmd)
+	//log.Println("Sending : " + cmd)
 	_, err = f.port.Write([]byte(cmd + "\n"))
 	if err != nil {
 		f.Publish(f.Event(Error), err)

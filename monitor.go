@@ -17,10 +17,11 @@ type Watchvar struct {
 
 // Controlvar holds data about a controlled variable
 type Controlvar struct {
-	ref    *int
-	oldval int
-	maxval int
-	minval int
+	ref        *int
+	oldval     int
+	maxval     int
+	minval     int
+	changefunc func()
 }
 
 // MonitorDriver holds data about the monitor driver
@@ -72,8 +73,8 @@ func (m *MonitorDriver) Watch(watchvar *int, name string) {
 }
 
 // Control registers a control variable for remote control
-func (m *MonitorDriver) Control(controlvar *int, name string, maxval int, minval int) {
-	m.controlvars[name] = Controlvar{ref: controlvar, oldval: *controlvar, maxval: maxval, minval: minval}
+func (m *MonitorDriver) Control(controlvar *int, name string, maxval int, minval int, changefn func()) {
+	m.controlvars[name] = Controlvar{ref: controlvar, oldval: *controlvar, maxval: maxval, minval: minval, changefunc: changefn}
 }
 
 // JSONControl struct used for communication
@@ -93,6 +94,9 @@ func (m *MonitorDriver) parseMonitorData(buf []byte) {
 		for k, v := range setmap.(map[string]interface{}) {
 			if c, ok := m.controlvars[k]; ok {
 				*c.ref = int(v.(float64))
+				if c.changefunc != nil {
+					c.changefunc()
+				}
 			}
 		}
 	}
@@ -126,33 +130,45 @@ type JSONWatch struct {
 
 func (m *MonitorDriver) watcher() {
 
-	loopcount := 0
-	dataToSend := false
-	j := JSONWatch{}
+	loopcount := 0 // used to send values occassionally, even if they haven't changed
+	newval := JSONWatch{Variables: make(map[string]int)}
+	oldval := JSONWatch{Variables: make(map[string]int)}
+
 	t0 := time.Now()
 
 	for m.running {
 		time.Sleep(2 * time.Millisecond)
 		loopcount++
-		j.Millis = int(time.Since(t0) / time.Millisecond)
-		j.Variables = make(map[string]int)
-		dataToSend = false
+		oldval.Millis = newval.Millis // use the time value from the last loop
+		newval.Millis = int(time.Since(t0) / time.Millisecond)
 
+		// Look for variables that have changed value
 		for _, wv := range m.watchvars {
 			if (loopcount%updateinterval) == 0 || wv.oldval != *wv.ref {
 				// Add the watched variable to the report
-				j.Variables[wv.name] = *wv.ref
+				oldval.Variables[wv.name] = wv.oldval
+				newval.Variables[wv.name] = *wv.ref
 				wv.oldval = *wv.ref
-				dataToSend = true
 			}
 		}
 
-		if dataToSend {
-			if jdata, err := json.Marshal(j); err == nil {
+		// send any variables that have changed value
+		if len(newval.Variables) > 0 {
+			// first send the old value if any have been missed
+			if jdata, err := json.Marshal(oldval); err == nil {
 				m.connection.UDPWrite(jdata)
 			} else {
 				log.Println("Error: ", err)
 			}
+			oldval.Variables = make(map[string]int)
+
+			// now send the new value
+			if jdata, err := json.Marshal(newval); err == nil {
+				m.connection.UDPWrite(jdata)
+			} else {
+				log.Println("Error: ", err)
+			}
+			newval.Variables = make(map[string]int)
 		}
 	}
 }

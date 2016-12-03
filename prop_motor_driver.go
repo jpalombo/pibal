@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/hybridgroup/gobot"
@@ -13,6 +14,7 @@ type MotorDriver struct {
 	name         string
 	connection   SerialWriter
 	CurrentSpeed [4]int16
+	gobot.Eventer
 }
 
 // NewMotorDriver return a new MotorDriver given a SerialWriter, name and pin
@@ -21,7 +23,9 @@ func NewMotorDriver(a SerialWriter, name string) *MotorDriver {
 	m := &MotorDriver{
 		name:       name,
 		connection: a,
+		Eventer:    gobot.NewEventer(),
 	}
+	m.AddEvent(MotorSpeed)
 
 	if eventer, ok := a.(gobot.Eventer); ok {
 		eventer.On(eventer.Event(Data), func(data interface{}) {
@@ -100,6 +104,14 @@ func (m *MotorDriver) GetPosition() (err error) {
 	return ErrSerialWriteUnsupported
 }
 
+// SetPid sets the motor pid parameters
+func (m *MotorDriver) SetPid(kp, ki, kd int) (err error) {
+	if writer, ok := m.connection.(SerialWriter); ok {
+		return writer.SerialWrite(fmt.Sprintf("+sp %d %d %d", kp, ki, kd))
+	}
+	return ErrSerialWriteUnsupported
+}
+
 // Stop stops the motor
 func (m *MotorDriver) Stop() (err error) {
 	if writer, ok := m.connection.(SerialWriter); ok {
@@ -112,12 +124,12 @@ func (m *MotorDriver) parseReadData(data string) {
 	split := strings.Split(data, " ")
 	switch split[0] {
 	case "+gs:":
-		log.Printf("speed: %s %s %s %s %s",
-			split[1],
-			split[2],
-			split[3],
-			split[4],
-			split[5])
+		mdata := MotorSpeedData{}
+		for i := 0; i < 4; i++ {
+			mdata.speed[i], _ = strconv.Atoi(split[i+1])
+		}
+		mdata.millis, _ = strconv.Atoi(split[5])
+		m.Publish(MotorSpeed, mdata)
 	case "+gp:":
 		log.Printf("position: %s %s %s %s %s",
 			split[1],

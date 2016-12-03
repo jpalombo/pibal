@@ -30,6 +30,12 @@ type JoystickData struct {
 	deadManHandle bool
 }
 
+// MotorSpeedData struct for data sent with the MotorSpeed event
+type MotorSpeedData struct {
+	speed  [4]int
+	millis int
+}
+
 // Interfaces
 
 // SerialWriter interface represents an Adaptor which has SerialWrite capabilities
