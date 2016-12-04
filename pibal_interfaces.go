@@ -23,6 +23,13 @@ const (
 	MotorSpeed = "motorspeed"
 )
 
+// BluetoothData struct for data sent with the Joystick event
+type BluetoothData struct {
+	value   int16
+	bType   byte
+	bNumber byte
+}
+
 // JoystickData struct for data sent with the Joystick event
 type JoystickData struct {
 	posX          float64

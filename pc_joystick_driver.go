@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"strconv"
+	"strings"
 
 	"github.com/hybridgroup/gobot"
 )
@@ -72,12 +74,11 @@ func (j *PCJoystickDriver) parseJoystickData(data []byte) {
 
 	case "Wireless Controller":
 		//Extract Playstation Controller data
-		log.Println(jdat)
-		/*
-			newPosX = float32(jdat["sticks"][2])
-			newPosY = float32(jdat["sticks"][3])
-			newDMH = (jdat["'buttons"][6] + jdat["buttons"][7]) > 0
-		*/
+		sticks := jdat["sticks"].([]interface{})
+		buttons := jdat["buttons"].([]interface{})
+		newPosX, _ = strconv.ParseFloat(strings.TrimSpace(sticks[2].(string)), 64)
+		newPosY, _ = strconv.ParseFloat(strings.TrimSpace(sticks[3].(string)), 64)
+		newDMH = buttons[6].(string) == "1" || buttons[7].(string) == "1"
 
 	case "Controller (XBOX 360 For Windows)":
 		// Extract XBOX 360 controller data

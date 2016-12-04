@@ -76,6 +76,13 @@ func (m *MotorDriver) Speed(value ...int16) (err error) {
 		}
 	}
 
+	// Dead zone
+	for i := range m.CurrentSpeed {
+		if m.CurrentSpeed[i] < 15 && m.CurrentSpeed[i] > -15 {
+			m.CurrentSpeed[i] = 0
+		}
+	}
+
 	outstring := fmt.Sprintf("+sa %d %d %d %d",
 		m.CurrentSpeed[0],
 		m.CurrentSpeed[1],
