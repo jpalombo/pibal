@@ -24,6 +24,8 @@ const (
 )
 
 // BluetoothData struct for data sent with the Joystick event
+// see https://www.kernel.org/doc/Documentation/input/joystick-api.txt for
+// meaning of fields
 type BluetoothData struct {
 	value   int16
 	bType   byte
@@ -55,4 +57,11 @@ type SerialWriter interface {
 type UDPWriter interface {
 	gobot.Adaptor
 	UDPWrite([]byte) (err error)
+}
+
+// MPU9250Sender interface
+type MPU9250Sender interface {
+	gobot.Adaptor
+	SensorAngle(int) int
+	SensorGyro(int) int
 }
