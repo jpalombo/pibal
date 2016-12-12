@@ -6,6 +6,7 @@ import (
 	//#include "sensor.h"
 	"C"
 )
+import "fmt"
 
 // MPU9250Driver is the Gobot Adaptor for UDP communication
 type MPU9250Driver struct {
@@ -49,11 +50,25 @@ func (b *MPU9250Driver) Port() string { return b.portName }
 func (b *MPU9250Driver) Name() string { return b.adaptorName }
 
 // SensorAngle call the C func
-func (b *MPU9250Driver) SensorAngle(i int) int {
-	return int(C.sensorAngle(C.int(i)))
+func (b *MPU9250Driver) SensorAngle(i int) (ret int, err error) {
+	ret = int(C.sensorAngle(C.int(i)))
+	if ret == 0 {
+		e := int(C.getLastError())
+		if e != 0 {
+			err = fmt.Errorf("SensorAngle returned error : %d", e)
+		}
+	}
+	return
 }
 
 // SensorGyro calls the C func
-func (b *MPU9250Driver) SensorGyro(i int) int {
-	return int(C.sensorGyro(C.int(i)))
+func (b *MPU9250Driver) SensorGyro(i int) (ret int, err error) {
+	ret = int(C.sensorGyro(C.int(i)))
+	if ret == 0 {
+		e := int(C.getLastError())
+		if e != 0 {
+			err = fmt.Errorf("SensorGyro returned error : %d", e)
+		}
+	}
+	return
 }

@@ -32,7 +32,7 @@ func (b *BluetoothAdapter) Connect() (errs []error) {
 	if b.port == nil {
 		var err error
 		if b.port, err = os.Open(b.portName); err != nil {
-			return []error{err}
+			log.Println("Error opening Bluetooth Adapter on port", b.portName, err)
 		}
 	}
 

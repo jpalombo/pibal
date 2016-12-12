@@ -21,6 +21,8 @@ const (
 	Joystick = "joystick"
 	// MotorSpeed event
 	MotorSpeed = "motorspeed"
+	// Balance event
+	Balance = "balance"
 )
 
 // BluetoothData struct for data sent with the Joystick event
@@ -62,6 +64,6 @@ type UDPWriter interface {
 // MPU9250Sender interface
 type MPU9250Sender interface {
 	gobot.Adaptor
-	SensorAngle(int) int
-	SensorGyro(int) int
+	SensorAngle(int) (int, error)
+	SensorGyro(int) (int, error)
 }

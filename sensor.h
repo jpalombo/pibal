@@ -6,5 +6,6 @@
 int mpu_open();
 int sensorAngle(int);
 int sensorGyro(int);
+int getLastError();
 
 #endif

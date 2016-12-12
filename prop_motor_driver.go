@@ -14,6 +14,7 @@ type MotorDriver struct {
 	name         string
 	connection   SerialWriter
 	CurrentSpeed [4]int16
+	interlock    *Interlock
 	gobot.Eventer
 }
 
@@ -23,6 +24,7 @@ func NewMotorDriver(a SerialWriter, name string) *MotorDriver {
 	m := &MotorDriver{
 		name:       name,
 		connection: a,
+		interlock:  NewInterlock(2, 100),
 		Eventer:    gobot.NewEventer(),
 	}
 	m.AddEvent(MotorSpeed)
@@ -76,20 +78,13 @@ func (m *MotorDriver) Speed(value ...int16) (err error) {
 		}
 	}
 
-	// Dead zone
-	for i := range m.CurrentSpeed {
-		if m.CurrentSpeed[i] < 15 && m.CurrentSpeed[i] > -15 {
-			m.CurrentSpeed[i] = 0
-		}
-	}
-
 	outstring := fmt.Sprintf("+sa %d %d %d %d",
 		m.CurrentSpeed[0],
 		m.CurrentSpeed[1],
 		m.CurrentSpeed[2],
 		m.CurrentSpeed[3])
 	if writer, ok := m.connection.(SerialWriter); ok {
-		return writer.SerialWrite(outstring)
+		return m.interlock.Write(outstring, writer.SerialWrite)
 	}
 
 	return ErrSerialWriteUnsupported
@@ -144,6 +139,8 @@ func (m *MotorDriver) parseReadData(data string) {
 			split[3],
 			split[4],
 			split[5])
+	case "+sa:":
+		m.interlock.ResponseRcvd()
 	default:
 		log.Printf("%s", data)
 	}

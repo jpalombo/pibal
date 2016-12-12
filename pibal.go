@@ -1,18 +1,20 @@
 package main
 
-import (
-	"time"
+import "github.com/hybridgroup/gobot"
 
-	"github.com/hybridgroup/gobot"
+var (
+	monitorudp *UDPAdaptor
+	// Monitor global used to monitor variables
+	Monitor *MonitorDriver
 )
 
 func main() {
 	gbot := gobot.NewGobot()
+	monitorudp = NewUDPAdaptor("monitor UDP", ":25045")
+	Monitor = NewMonitorDriver(monitorudp, "monitor")
 
 	propserial := NewSerialAdaptor("propeller", "/dev/ttyAMA0")
 	motor := NewMotorDriver(propserial, "motor")
-	monitorudp := NewUDPAdaptor("monitor UDP", ":25045")
-	monitor := NewMonitorDriver(monitorudp, "monitor")
 	joystickudp := NewUDPAdaptor("joystick UDP", ":10000")
 	remotejoystick := NewPCJoystickDriver(joystickudp, "PC joystick")
 	bluetooth := NewBluetoothAdapter("bluetooth", "/dev/input/js0")
@@ -20,33 +22,37 @@ func main() {
 	mpu9250 := NewMPU9250Driver("MPU9250", "I2C")
 	balance := NewBalanceDriver(mpu9250, "Balance")
 
-	var a2, g1 int
-	monitor.Watch(&a2, "Angle[2]")
-	monitor.Watch(&g1, "Gyro[1]")
-
 	work := func() {
 		motor.Stop()
 
+		deadzone := func(i int16) int16 {
+			if i < 15 && i > -15 {
+				i = 0
+			}
+			return i
+		}
 		// Handler for commands from a remote joystick
 		joystickhandler := func(data interface{}) {
 			j := data.(JoystickData)
 			if j.deadManHandle {
 				gbot.Stop()
 			}
-			motor.Speed(int16(j.posY*200+j.posX*50), int16(j.posY*200-j.posX*50))
+			motor.Speed(
+				deadzone(int16(j.posY*200+j.posX*50)),
+				deadzone(int16(j.posY*200-j.posX*50)))
 		}
+
 		remotejoystick.On(remotejoystick.Event(Joystick), joystickhandler)
 		bluetoothjoystick.On(bluetoothjoystick.Event(Joystick), joystickhandler)
-
-		gobot.Every(20*time.Millisecond, func() {
-			a2 = mpu9250.SensorAngle(2)
-			g1 = mpu9250.SensorGyro(1)
+		balance.On(balance.Event(Balance), func(data interface{}) {
+			b := data.(int)
+			motor.Speed(int16(b), int16(b))
 		})
 	}
 
 	robot := gobot.NewRobot("PiBal",
-		[]gobot.Connection{propserial, joystickudp, bluetooth, mpu9250, monitorudp},
-		[]gobot.Device{motor, remotejoystick, bluetoothjoystick, balance, monitor},
+		[]gobot.Connection{monitorudp, propserial, joystickudp, bluetooth, mpu9250},
+		[]gobot.Device{Monitor, motor, remotejoystick, bluetoothjoystick, balance},
 		work,
 	)
 	gbot.AddRobot(robot)
