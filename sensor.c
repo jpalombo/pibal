@@ -79,7 +79,7 @@ int getLastError()
 	return lasterror;
 }
 
-int sensorAngle(int i)
+int sensorAccel(int i)
 {
 	if (i < 0 || i > 2) {
 		lasterror = 1;

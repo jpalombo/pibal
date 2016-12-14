@@ -48,7 +48,11 @@ func (i *Interlock) ResponseRcvd() (err error) {
 func (i *Interlock) Write(str string, writer func(string) error) (err error) {
 	//log.Println("Write", i.count, str)
 	i.m.Lock()
-	i.checkTimeout()
+	if i.count == 0 {
+		i.lastResp = time.Now()
+	} else {
+		i.checkTimeout()
+	}
 	if i.count < i.size {
 		i.count++
 		err = writer(str)

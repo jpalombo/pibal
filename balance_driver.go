@@ -72,48 +72,76 @@ func (b *BalanceDriver) balanceLoop() {
 
 	// tracking variables, some of which are monitored
 	var (
-		gAngle, gGyro, newspeed   int
-		gP, gI, gD, gKp, gKi, gKd int
-		gGyroint, gGyrointint     int64
-		ok                        error
+		gAccel, gGyro, newspeed int
+		gP, gI, gD              int
+		gKp, gKi, gKd           int
+		gAngle                  int
+		gAngleInt               int64
+		ok                      error
 	)
-	gKp = -10000
-	gKi = -0
-	gKd = 0
+	gKp = -300
+	gKi = -1000
+	gKd = -5000
 	started := false
 	Monitor.Watch(&gP, "P")
 	Monitor.Watch(&gI, "I")
 	Monitor.Watch(&gD, "D")
+	Monitor.Watch(&gAccel, "Accel")
 	Monitor.Watch(&newspeed, "Speed")
+	Monitor.Watch(&gGyro, "Gyro")
+	Monitor.Watch(&gAngle, "Angle")
 	Monitor.Control(&gKp, "Kp", 50000, -50000, nil)
 	Monitor.Control(&gKi, "Ki", 50000, -50000, nil)
 	Monitor.Control(&gKd, "Kd", 50000, -50000, nil)
 
 	// Now into the loop itself
-	// Loop takes ~1.9ms to run, so max frequency is just over 500Hz
-	// No point looping faster than can issue motor commands, which take 10-15ms
-	tick := time.Tick(time.Millisecond * 15)
+	// Loop takes ~1.9ms to run, so max frequency is just over 500Hz.  We'll set
+	// loop time to exactly 2ms, i.e rate of 500 Hz
+	//
+	// The loop reads the Acceleration and Gyro settings and derives the angle
+	// of lean from these.
+	// The sensitivities of the two sensors are :
+	//		Accel : full scale range (fsr) = 2 G
+	//    Gyro  : fsr = 250 degrees per second
+	//
+	// The Accel reading maps directly to angle.  Specifically
+	//   sin(Angle) = Accel reading * 2 / fsr
+	// for small Angles sin(Angle) ~= Angle (in Radians).  Error <2% for Angle <20 degrees
+	//
+	// The angle can also be found from the integral of the Gyro reading
+	// if Gyro is sampled 500 times a second and the values summed to give Gyroint then
+	//   Angle (degrees) = (Gyroint / 500) / (fsr / 250) = Gyroint * 250 / (fsr * 500) = Gyroint / 2 * fsr
+	//
+	// Angle degrees = radians * 180 / Pi
+	//
+	//  => Gyroint * Pi / 2 * fsr * 180 = Accel * 2 /fsr
+	//     Gyroint = Accel * 2 * 2 * 180 / Pi ~= 229 * Accel
+	//
+	// We'll combine the two each by using 98% of the Gyroint number and 2% of the Accel number
+	//
+
+	tick := time.Tick(time.Millisecond * 2)
 	for b.running {
 		<-tick
 		//loopcount++
-		gAngle, ok = b.mpu9250conn.SensorAngle(2)
+		gAccel, ok = b.mpu9250conn.SensorAccel(2)
 		checkrc(ok)
 		gGyro, ok = b.mpu9250conn.SensorGyro(1)
 		checkrc(ok)
-		gGyroint += int64(gGyro)
-		gGyrointint += int64(gGyroint)
+
+		gAngle = (gAngle+gGyro)*98/100 + (gAccel * 229 * 2 / 100)
+		gAngleInt += int64(gAngle)
 
 		// Detect if we are upright and should start
-		if !started && Abs(gAngle) < 500 && Abs(gGyro) < 500 {
+		if !started && Abs(gAccel) < 500 && Abs(gGyro) < 500 {
 			started = true
-			gGyroint = 0
-			gGyrointint = 0
+			gAngleInt = 0
 			log.Println("Start Balancing")
 		}
 
-		gP = int((int64(gKp) * gGyroint) >> 22)
-		gI = int((int64(gKi) * gGyrointint) >> 22)
-		gD = int((int64(gKd) * int64(gGyro)) >> 22)
+		gP = (gKp * gAngle) >> 22
+		gI = int((int64(gKi) * gAngleInt) >> 32)
+		gD = (gKd * gGyro) >> 22
 
 		if started {
 			newspeed = gP + gI + gD

@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 int mpu_open();
-int sensorAngle(int);
+int sensorAccel(int);
 int sensorGyro(int);
 int getLastError();
 

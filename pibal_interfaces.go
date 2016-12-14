@@ -64,6 +64,6 @@ type UDPWriter interface {
 // MPU9250Sender interface
 type MPU9250Sender interface {
 	gobot.Adaptor
-	SensorAngle(int) (int, error)
+	SensorAccel(int) (int, error)
 	SensorGyro(int) (int, error)
 }

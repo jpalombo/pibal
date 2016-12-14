@@ -49,13 +49,13 @@ func (b *MPU9250Driver) Port() string { return b.portName }
 // Name returns the Bluetooth Adaptors name
 func (b *MPU9250Driver) Name() string { return b.adaptorName }
 
-// SensorAngle call the C func
-func (b *MPU9250Driver) SensorAngle(i int) (ret int, err error) {
-	ret = int(C.sensorAngle(C.int(i)))
+// SensorAccel call the C func
+func (b *MPU9250Driver) SensorAccel(i int) (ret int, err error) {
+	ret = int(C.sensorAccel(C.int(i)))
 	if ret == 0 {
 		e := int(C.getLastError())
 		if e != 0 {
-			err = fmt.Errorf("SensorAngle returned error : %d", e)
+			err = fmt.Errorf("SensorAccel returned error : %d", e)
 		}
 	}
 	return
