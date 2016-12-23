@@ -7,7 +7,7 @@ import (
 	"github.com/hybridgroup/gobot"
 )
 
-// BalanceDriver Represents a Joystick
+// BalanceDriver used to balance the robot
 type BalanceDriver struct {
 	name        string
 	mpu9250conn MPU9250Sender
@@ -24,6 +24,7 @@ func NewBalanceDriver(a MPU9250Sender, name string) *BalanceDriver {
 		Eventer:     gobot.NewEventer(),
 	}
 	b.AddEvent(Balance)
+	b.AddEvent(Balancing)
 	return b
 }
 
@@ -62,13 +63,6 @@ func (b *BalanceDriver) balanceLoop() {
 			//b.running = false
 		}
 	}
-	// an Abs function
-	Abs := func(x int) int {
-		if x < 0 {
-			return -x
-		}
-		return x
-	}
 
 	// tracking variables, some of which are monitored
 	var (
@@ -79,8 +73,8 @@ func (b *BalanceDriver) balanceLoop() {
 		gAngleInt               int64
 		ok                      error
 	)
-	gKp = -300
-	gKi = -1000
+	gKp = -450
+	gKi = -2000
 	gKd = -5000
 	started := false
 	Monitor.Watch(&gP, "P")
@@ -136,22 +130,26 @@ func (b *BalanceDriver) balanceLoop() {
 		if !started && Abs(gAccel) < 500 && Abs(gGyro) < 500 {
 			started = true
 			gAngleInt = 0
+			gAngle = 0
 			log.Println("Start Balancing")
+			b.Publish(Balancing, true)
 		}
 
 		gP = (gKp * gAngle) >> 22
-		gI = int((int64(gKi) * gAngleInt) >> 32)
+		gI = int((int64(gKi) * gAngleInt) >> 28)
 		gD = (gKd * gGyro) >> 22
 
 		if started {
 			newspeed = gP + gI + gD
+			b.Publish(Balance, newspeed)
 			// Detect if we are at the speed limit and stop if we are
-			if Abs(newspeed) > 200 {
+			if Abs(newspeed) > 300 {
 				started = false
 				newspeed = 0
 				log.Println("Stop Balancing")
+				b.Publish(Balancing, false)
+				b.Publish(Balance, newspeed)
 			}
-			b.Publish(Balance, newspeed)
 		}
 	}
 }

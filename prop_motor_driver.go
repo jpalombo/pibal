@@ -7,14 +7,15 @@ import (
 	"strings"
 
 	"github.com/hybridgroup/gobot"
+	"golang.org/x/exp/io/i2c"
 )
 
 // MotorDriver Represents a Motor
 type MotorDriver struct {
-	name         string
-	connection   SerialWriter
-	CurrentSpeed [4]int16
-	interlock    *Interlock
+	name       string
+	connection SerialWriter
+	//CurrentSpeed [4]int16
+	//interlock    *Interlock
 	gobot.Eventer
 }
 
@@ -24,8 +25,8 @@ func NewMotorDriver(a SerialWriter, name string) *MotorDriver {
 	m := &MotorDriver{
 		name:       name,
 		connection: a,
-		interlock:  NewInterlock(2, 100),
-		Eventer:    gobot.NewEventer(),
+		//interlock:  NewInterlock(2, 100),
+		Eventer: gobot.NewEventer(),
 	}
 	m.AddEvent(MotorSpeed)
 
@@ -57,37 +58,54 @@ func (m *MotorDriver) Halt() (errs []error) { return }
 
 // Speed sets the motor speeds
 func (m *MotorDriver) Speed(value ...int16) (err error) {
-	if value == nil { // called with zero parameters
-		for i := range m.CurrentSpeed {
-			m.CurrentSpeed[i] = 0
-		}
-	}
+	var newSpeed [4]int16
 	switch len(value) {
+	case 0: // nothing to do, newSpeed already 0
 	case 1:
-		for i := range m.CurrentSpeed {
-			m.CurrentSpeed[i] = value[0]
+		for i := range newSpeed {
+			newSpeed[i] = value[0]
 		}
 	case 2:
-		m.CurrentSpeed[0] = value[0]
-		m.CurrentSpeed[1] = value[0]
-		m.CurrentSpeed[2] = value[1]
-		m.CurrentSpeed[3] = value[1]
+		newSpeed[0] = value[0]
+		newSpeed[1] = 0 //value[0]
+		newSpeed[2] = 0 //value[1]
+		newSpeed[3] = value[1]
 	case 4:
-		for i := range m.CurrentSpeed {
-			m.CurrentSpeed[i] = value[i]
+		for i := range newSpeed {
+			newSpeed[i] = value[i]
 		}
 	}
 
-	outstring := fmt.Sprintf("+sa %d %d %d %d",
-		m.CurrentSpeed[0],
-		m.CurrentSpeed[1],
-		m.CurrentSpeed[2],
-		m.CurrentSpeed[3])
-	if writer, ok := m.connection.(SerialWriter); ok {
-		return m.interlock.Write(outstring, writer.SerialWrite)
-	}
+	/*outstring := fmt.Sprintf("+sa %d %d %d %d",
+		newSpeed[0],
+		newSpeed[1],
+		newSpeed[2],
+		newSpeed[3])
 
-	return ErrSerialWriteUnsupported
+	//	if writer, ok := m.connection.(SerialWriter); ok {
+	//		return m.interlock.Write(outstring, writer.SerialWrite)
+	//	}
+	//	return ErrSerialWriteUnsupported */
+
+	// Write directly using I2C rather than serial interface for increased speed
+	d, err := i2c.Open(&i2c.Devfs{Dev: "/dev/i2c-1"}, 0x42)
+	if err != nil {
+		return err
+	}
+	var regs [8]byte
+	for i := 0; i < 4; i++ {
+		regs[i*2] = byte(Abs(int(newSpeed[i])))
+		if newSpeed[i] > 0 {
+			regs[i*2+1] = 0
+		} else {
+			regs[i*2+1] = 1
+		}
+	}
+	if err = d.WriteReg(0, regs[:]); err != nil {
+		return err
+	}
+	d.Close()
+	return
 }
 
 // GetSpeed gets the motor speeds
@@ -140,7 +158,7 @@ func (m *MotorDriver) parseReadData(data string) {
 			split[4],
 			split[5])
 	case "+sa:":
-		m.interlock.ResponseRcvd()
+		//m.interlock.ResponseRcvd()
 	default:
 		log.Printf("%s", data)
 	}

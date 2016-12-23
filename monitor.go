@@ -12,6 +12,7 @@ import (
 type Watchvar struct {
 	ref    *int
 	oldval int
+	missed bool
 	name   string
 }
 
@@ -34,7 +35,7 @@ type MonitorDriver struct {
 }
 
 // NewMonitorDriver initialises the MonitorDriver struct
-func NewMonitorDriver(u UDPWriter, name string) *MonitorDriver {
+func NewMonitorDriver(u UDPWriter, name string, periodms int) *MonitorDriver {
 	m := &MonitorDriver{
 		name:        name,
 		connection:  u,
@@ -50,7 +51,9 @@ func NewMonitorDriver(u UDPWriter, name string) *MonitorDriver {
 		})
 	}
 
-	go m.watcher()
+	if periodms > 0 {
+		go m.watcher(periodms)
+	}
 
 	return m
 }
@@ -128,7 +131,7 @@ type JSONWatch struct {
 	Variables map[string]int `json:"variables"`
 }
 
-func (m *MonitorDriver) watcher() {
+func (m *MonitorDriver) watcher(period int) {
 
 	loopcount := 0 // used to send values occassionally, even if they haven't changed
 	newval := JSONWatch{Variables: make(map[string]int)}
@@ -136,8 +139,9 @@ func (m *MonitorDriver) watcher() {
 
 	t0 := time.Now()
 
+	tick := time.Tick(time.Millisecond * time.Duration(period))
 	for m.running {
-		time.Sleep(2 * time.Millisecond)
+		<-tick
 		loopcount++
 		oldval.Millis = newval.Millis // use the time value from the last loop
 		newval.Millis = int(time.Since(t0) / time.Millisecond)
@@ -146,21 +150,28 @@ func (m *MonitorDriver) watcher() {
 		for _, wv := range m.watchvars {
 			if (loopcount%updateinterval) == 0 || wv.oldval != *wv.ref {
 				// Add the watched variable to the report
-				oldval.Variables[wv.name] = wv.oldval
+				if wv.missed {
+					oldval.Variables[wv.name] = wv.oldval
+				}
 				newval.Variables[wv.name] = *wv.ref
 				wv.oldval = *wv.ref
+				wv.missed = false
+			} else {
+				wv.missed = true
 			}
 		}
 
 		// send any variables that have changed value
 		if len(newval.Variables) > 0 {
 			// first send the old value if any have been missed
-			if jdata, err := json.Marshal(oldval); err == nil {
-				m.connection.UDPWrite(jdata)
-			} else {
-				log.Println("Error: ", err)
+			if len(oldval.Variables) > 0 {
+				if jdata, err := json.Marshal(oldval); err == nil {
+					m.connection.UDPWrite(jdata)
+				} else {
+					log.Println("Error: ", err)
+				}
+				oldval.Variables = make(map[string]int)
 			}
-			oldval.Variables = make(map[string]int)
 
 			// now send the new value
 			if jdata, err := json.Marshal(newval); err == nil {

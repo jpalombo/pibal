@@ -43,6 +43,7 @@ func (b *BluetoothAdapter) Connect() (errs []error) {
 			n, err := b.port.Read(inbuf)
 			if err != nil || n != 8 {
 				log.Println("Error : ", err)
+				return
 			}
 			bluebuf.value = int16(inbuf[4]) | int16(inbuf[5])<<8
 			bluebuf.bType = inbuf[6]

@@ -45,6 +45,12 @@ int mpu_open()
 		printf("Failed to set accel sensitivity!\n");
 		return -1;
 	}
+  printf("Setting sample rate...\n");
+  if (mpu_set_sample_rate(500) != 0){
+    printf("Failed to set sample rate!\n");
+    return -1;
+  }
+  printf("Setting Compass sample rate...\n");
 	if (mpu_set_compass_sample_rate(10) != 0) {
 		printf("Failed to set compass sample rate!\n");
 		return -1;

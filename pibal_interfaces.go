@@ -21,8 +21,12 @@ const (
 	Joystick = "joystick"
 	// MotorSpeed event
 	MotorSpeed = "motorspeed"
-	// Balance event
+	// MotorPosition event
+	MotorPosition = "motorposition"
+	// Balance event - sends updated speed data
 	Balance = "balance"
+	// Balancing event - sends boolean when entering and exiting balancing state
+	Balancing = "balancing"
 )
 
 // BluetoothData struct for data sent with the Joystick event
@@ -66,4 +70,10 @@ type MPU9250Sender interface {
 	gobot.Adaptor
 	SensorAccel(int) (int, error)
 	SensorGyro(int) (int, error)
+}
+
+// Balancer interface
+type Balancer interface {
+	gobot.Device
+	gobot.Eventer
 }

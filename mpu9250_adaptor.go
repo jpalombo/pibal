@@ -1,12 +1,13 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/hybridgroup/gobot"
 
 	//#include "sensor.h"
 	"C"
 )
-import "fmt"
 
 // MPU9250Driver is the Gobot Adaptor for UDP communication
 type MPU9250Driver struct {
