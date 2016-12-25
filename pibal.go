@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"runtime/pprof"
+	"time"
 
 	"github.com/hybridgroup/gobot"
 )
@@ -38,7 +39,7 @@ func main() {
 	gbot := gobot.NewGobot()
 	monitorudp = NewUDPAdaptor("monitor UDP", ":25045")
 	Monitor = NewMonitorDriver(monitorudp, "monitor", monperiod)
-
+	SpeedMonitor := NewSpeedMon()
 	propserial := NewSerialAdaptor("propeller", "/dev/ttyAMA0")
 	motor := NewMotorDriver(propserial, "motor")
 	joystickudp := NewUDPAdaptor("joystick UDP", ":10000")
@@ -46,22 +47,31 @@ func main() {
 	bluetooth := NewBluetoothAdapter("bluetooth", "/dev/input/js0")
 	bluetoothjoystick := NewBluetoothDriver(bluetooth, "Bluetooth joystick")
 	mpu9250 := NewMPU9250Driver("MPU9250", "I2C")
-	var balance Balancer
-	if *configure {
-		balance = NewConfigDriver(mpu9250, "Configure")
-	} else {
-		balance = NewBalanceDriver(mpu9250, "Balance")
-	}
+	balance := NewBalanceDriver(mpu9250, "Balance")
 
 	work := func() {
-		motor.Stop()
+		// Initialize vars
 		balancing := false
-		deadzone := func(i int16) int16 {
+		motordiff := 0
+		motor.Stop()
+
+		// Start a go routine to poll for motor position
+		positionPoll := true
+		go func() {
+			tick := time.Tick(time.Millisecond * 100)
+			for positionPoll {
+				<-tick
+				motor.GetPosition()
+			}
+		}()
+
+		deadzone := func(i float64) int {
 			if i < 15 && i > -15 {
 				i = 0
 			}
-			return i
+			return int(i)
 		}
+
 		// Handler for commands from a local or remote joystick
 		joystickhandler := func(data interface{}) {
 			j := data.(JoystickData)
@@ -69,25 +79,49 @@ func main() {
 				pprof.StopCPUProfile()
 				gbot.Stop()
 			}
+			motordiff = deadzone(j.posX * 50)
+			motorspeed := deadzone(j.posY * 200)
 			if !balancing {
-				motor.Speed(
-					deadzone(int16(j.posY*200+j.posX*50)),
-					deadzone(int16(j.posY*200-j.posX*50)))
+				motor.Speed(motorspeed+motordiff, motorspeed-motordiff)
+			} else {
+				angleoffset := SpeedMonitor.RequestSpeed(motorspeed / 2)
+				balance.SetAngleOffset(angleoffset)
 			}
 		}
 
+		// Event Handlers
+
+		// remote Joystick
 		remotejoystick.On(remotejoystick.Event(Joystick), joystickhandler)
+
+		// Bluetooth Joystick
 		bluetoothjoystick.On(bluetoothjoystick.Event(Joystick), joystickhandler)
+
+		// Changed balance state, reset everything
 		balance.On(balance.Event(Balancing), func(data interface{}) {
 			balancing = data.(bool)
+			motordiff = 0
+			motor.Stop()
+			SpeedMonitor.Reset()
 		})
-		balance.On(balance.Event(Balance), func(data interface{}) {
+
+		// Motor speeds from the balance unit
+		balance.On(balance.Event(BalanceSpeed), func(data interface{}) {
 			if balancing {
-				b := data.(int)
-				motor.Speed(int16(b), int16(b))
+				speed := data.(int)
+				motor.Speed(speed+motordiff, speed-motordiff)
 			}
 		})
-	}
+
+		// Updated position info
+		motor.On(motor.Event(MotorPosition), func(data interface{}) {
+			if balancing {
+				mp := data.(MotorPositionData)
+				angleoffset := SpeedMonitor.UpdatePosition((mp.position[0] + mp.position[3]) / 2)
+				balance.SetAngleOffset(angleoffset)
+			}
+		})
+	} // end work function
 
 	robot := gobot.NewRobot("PiBal",
 		[]gobot.Connection{monitorudp, propserial, joystickudp, bluetooth, mpu9250},

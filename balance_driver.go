@@ -12,6 +12,9 @@ type BalanceDriver struct {
 	name        string
 	mpu9250conn MPU9250Sender
 	running     bool
+	angleOffset int
+	gyroFilter  *Filter
+	accelFilter *Filter
 	gobot.Eventer
 }
 
@@ -21,9 +24,11 @@ func NewBalanceDriver(a MPU9250Sender, name string) *BalanceDriver {
 		name:        name,
 		mpu9250conn: a,
 		running:     true,
+		gyroFilter:  NewFilter(20),
+		accelFilter: NewFilter(20),
 		Eventer:     gobot.NewEventer(),
 	}
-	b.AddEvent(Balance)
+	b.AddEvent(BalanceSpeed)
 	b.AddEvent(Balancing)
 	return b
 }
@@ -46,43 +51,37 @@ func (b *BalanceDriver) Halt() (errs []error) {
 	return
 }
 
+// SetAngleOffset sets angle offset
+func (b *BalanceDriver) SetAngleOffset(offset int) {
+	b.angleOffset = offset
+}
+
 // balanceLoop does the work of balancing the robot
 func (b *BalanceDriver) balanceLoop() {
 
-	// First some housekeeping and utility routines
-	// code to track how fast we are looping
-	/*	loopcount := 0
-		gobot.Every(time.Second, func() {
-			log.Println("Loops per sec = ", loopcount)
-			loopcount = 0
-		}) */
-	// a return code checker
-	checkrc := func(ok error) {
-		if ok != nil {
-			log.Println("Error reading MPU9250 : ", ok)
-			//b.running = false
-		}
-	}
-
 	// tracking variables, some of which are monitored
 	var (
-		gAccel, gGyro, newspeed int
-		gP, gI, gD              int
-		gKp, gKi, gKd           int
-		gAngle                  int
-		gAngleInt               int64
-		ok                      error
+		gAccelRaw, gAccel              int
+		gGyroRaw, gGyro                int
+		motorSpeed                     int
+		gP, gI, gD                     int
+		gKp, gKi, gKd                  int
+		gAngle, gLastAngle, gAngleDiff int
+		gAngleInt                      int64
+		ok                             error
 	)
-	gKp = -450
-	gKi = -2000
-	gKd = -5000
+	gKp = -780
+	gKi = -2200
+	gKd = -4400
 	started := false
 	Monitor.Watch(&gP, "P")
 	Monitor.Watch(&gI, "I")
 	Monitor.Watch(&gD, "D")
 	Monitor.Watch(&gAccel, "Accel")
-	Monitor.Watch(&newspeed, "Speed")
+	Monitor.Watch(&gAccelRaw, "AccelRaw")
+	Monitor.Watch(&motorSpeed, "Speed")
 	Monitor.Watch(&gGyro, "Gyro")
+	Monitor.Watch(&gGyroRaw, "GyroRaw")
 	Monitor.Watch(&gAngle, "Angle")
 	Monitor.Control(&gKp, "Kp", 50000, -50000, nil)
 	Monitor.Control(&gKi, "Ki", 50000, -50000, nil)
@@ -118,37 +117,46 @@ func (b *BalanceDriver) balanceLoop() {
 	for b.running {
 		<-tick
 		//loopcount++
-		gAccel, ok = b.mpu9250conn.SensorAccel(2)
-		checkrc(ok)
-		gGyro, ok = b.mpu9250conn.SensorGyro(1)
-		checkrc(ok)
+		gAccelRaw, ok = b.mpu9250conn.SensorAccel(2)
+		if ok != nil {
+			log.Println("Error reading MPU9250 Accel : ", ok)
+		}
+		gGyroRaw, ok = b.mpu9250conn.SensorGyro(1)
+		if ok != nil {
+			log.Println("Error reading MPU9250 Gyro : ", ok)
+		}
 
+		gAccel = b.accelFilter.Add(gAccelRaw)
+		gGyro = b.gyroFilter.Add(gGyroRaw)
 		gAngle = (gAngle+gGyro)*98/100 + (gAccel * 229 * 2 / 100)
 		gAngleInt += int64(gAngle)
+		gAngleDiff = gAngle - gLastAngle
+		gLastAngle = gAngle
 
 		// Detect if we are upright and should start
 		if !started && Abs(gAccel) < 500 && Abs(gGyro) < 500 {
 			started = true
 			gAngleInt = 0
 			gAngle = 0
+			gLastAngle = 0
 			log.Println("Start Balancing")
 			b.Publish(Balancing, true)
 		}
 
 		gP = (gKp * gAngle) >> 22
 		gI = int((int64(gKi) * gAngleInt) >> 28)
-		gD = (gKd * gGyro) >> 22
+		gD = (gKd * gAngleDiff) >> 22
 
 		if started {
-			newspeed = gP + gI + gD
-			b.Publish(Balance, newspeed)
+			motorSpeed = gP + gI + gD
+			b.Publish(BalanceSpeed, motorSpeed)
 			// Detect if we are at the speed limit and stop if we are
-			if Abs(newspeed) > 300 {
+			if Abs(motorSpeed) > 300 {
 				started = false
-				newspeed = 0
+				motorSpeed = 0
 				log.Println("Stop Balancing")
 				b.Publish(Balancing, false)
-				b.Publish(Balance, newspeed)
+				b.Publish(BalanceSpeed, motorSpeed)
 			}
 		}
 	}

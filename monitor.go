@@ -90,7 +90,8 @@ type JSONControl struct {
 func (m *MonitorDriver) parseMonitorData(buf []byte) {
 	var jdat map[string]interface{}
 	if err := json.Unmarshal(buf, &jdat); err != nil {
-		panic(err)
+		log.Println("Error in Monitor:", err)
+		return
 	}
 
 	if setmap, ok := jdat["set"]; ok {
@@ -114,12 +115,13 @@ func (m *MonitorDriver) parseMonitorData(buf []byte) {
 	// Convert the data into JSON
 	joutbytes, err := json.Marshal(jdat)
 	if err != nil {
-		panic(err)
+		log.Println("Error in Monitor:", err)
+		return
 	}
 
 	//Reply to the client
 	if err := m.connection.UDPWrite(joutbytes); err != nil {
-		log.Println("Error: ", err)
+		log.Println("Error in Monitor: ", err)
 	}
 }
 

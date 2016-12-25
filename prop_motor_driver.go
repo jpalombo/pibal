@@ -29,6 +29,7 @@ func NewMotorDriver(a SerialWriter, name string) *MotorDriver {
 		Eventer: gobot.NewEventer(),
 	}
 	m.AddEvent(MotorSpeed)
+	m.AddEvent(MotorPosition)
 
 	if eventer, ok := a.(gobot.Eventer); ok {
 		eventer.On(eventer.Event(Data), func(data interface{}) {
@@ -57,8 +58,8 @@ func (m *MotorDriver) Start() (errs []error) { return }
 func (m *MotorDriver) Halt() (errs []error) { return }
 
 // Speed sets the motor speeds
-func (m *MotorDriver) Speed(value ...int16) (err error) {
-	var newSpeed [4]int16
+func (m *MotorDriver) Speed(value ...int) (err error) {
+	var newSpeed [4]int
 	switch len(value) {
 	case 0: // nothing to do, newSpeed already 0
 	case 1:
@@ -94,7 +95,7 @@ func (m *MotorDriver) Speed(value ...int16) (err error) {
 	}
 	var regs [8]byte
 	for i := 0; i < 4; i++ {
-		regs[i*2] = byte(Abs(int(newSpeed[i])))
+		regs[i*2] = byte(Abs(newSpeed[i]))
 		if newSpeed[i] > 0 {
 			regs[i*2+1] = 0
 		} else {
@@ -151,12 +152,12 @@ func (m *MotorDriver) parseReadData(data string) {
 		mdata.millis, _ = strconv.Atoi(split[5])
 		m.Publish(MotorSpeed, mdata)
 	case "+gp:":
-		log.Printf("position: %s %s %s %s %s",
-			split[1],
-			split[2],
-			split[3],
-			split[4],
-			split[5])
+		mdata := MotorPositionData{}
+		for i := 0; i < 4; i++ {
+			mdata.position[i], _ = strconv.Atoi(split[i+1])
+		}
+		mdata.millis, _ = strconv.Atoi(split[5])
+		m.Publish(MotorPosition, mdata)
 	case "+sa:":
 		//m.interlock.ResponseRcvd()
 	default:

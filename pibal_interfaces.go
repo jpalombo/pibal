@@ -23,8 +23,8 @@ const (
 	MotorSpeed = "motorspeed"
 	// MotorPosition event
 	MotorPosition = "motorposition"
-	// Balance event - sends updated speed data
-	Balance = "balance"
+	// BalanceSpeed event - sends updated speed data
+	BalanceSpeed = "balancespeed"
 	// Balancing event - sends boolean when entering and exiting balancing state
 	Balancing = "balancing"
 )
@@ -51,6 +51,12 @@ type MotorSpeedData struct {
 	millis int
 }
 
+// MotorPositionData struct for data sent with the MotorSpeed event
+type MotorPositionData struct {
+	position [4]int
+	millis   int
+}
+
 // Interfaces
 
 // SerialWriter interface represents an Adaptor which has SerialWrite capabilities
@@ -74,6 +80,7 @@ type MPU9250Sender interface {
 
 // Balancer interface
 type Balancer interface {
+	SetAngleOffset(offset int)
 	gobot.Device
 	gobot.Eventer
 }
